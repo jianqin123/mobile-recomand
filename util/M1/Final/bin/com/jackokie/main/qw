@@ -1,0 +1,136 @@
+
+package com.jackokie.main;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.sql.Time;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Random;
+import java.util.HashMap;
+
+import com.jackokie.objects.LabelsCategory;
+import com.jackokie.objects.Shop;
+import com.jackokie.objects.TestInfo;
+import com.jackokie.objects.Trace;
+import com.jackokie.objects.TrainInfo;
+import com.jackokie.objects.User;
+import com.jackokie.utils.CSVTools;
+import com.jackokie.utils.CalUtils;
+import com.jackokie.utils.Utils;
+
+/**
+ * @author jackokie E-mail: jackokie@qq.com
+ * @version 创建时间：2016年11月26日 下午2:17:10 类说明 :
+ */
+public class Main {
+	private static final String TRACE_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\SYS.CCF_USER_TRACE_FS.csv";
+	private static final String TRAIN_INFO_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\TRAIN_INFO.csv";
+	private static final String TEST_INFO_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\TEST_INFO.csv";
+	private static final String SHOP_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\SYS.CCF_SHOP_PROFILE_FS.csv";
+	private static final String ACCURACY_FILE_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\ACCURACY.csv";
+	private static final String USER_MATCH_TEST_ANS_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\ANSWER.csv";
+	private static final String USER_PATH = "G:\\MyEclipse\\ChinaUnicomFS\\SYS.CCF_USER_PROFILE_FS.csv";
+
+	public static void main(String[] args) throws IOException {
+		// Read the whole data
+
+		double[] DIF_LONG_LAT = { 0.003, 0.005, 0.008 };
+		double[] DIS_RATIO_1 = { 0.06, 0.08, 0.1, 0.13, 0.15, 0.17 };
+		double[] DIS_RATIO_2 = { 0.18, 0.2, 0.23, 0.26, 0.3, 0.4, 0.5 };
+		double[] CATE_RATIO = { 0.25 };
+		double[] DIS = { 2000, 2500, 3000, 3500, 4000, 5000 };
+		double difLongLat = 0.003; // 确定
+		double disRatio1 = 0.1;
+		double disRatio2 = 0.25;
+		double cateRatio = 0.25; // 确定
+		double dis = 5000;
+		CalUtils cal = new CalUtils();
+
+		System.out.println(
+				"..........................................Reading original data..............................................");
+		CSVTools reader = new CSVTools();
+		HashMap<String, TrainInfo> trainData = reader.readTrainInfo(TRAIN_INFO_PATH);
+		HashMap<String, TestInfo> testData = reader.readTestInfo(TEST_INFO_PATH);
+		HashMap<Integer, Shop> shopData = reader.readShopData(SHOP_PATH);
+		HashMap<String, Trace> traceData = reader.readTraceData(TRACE_PATH);
+		HashMap<String, User> userData = reader.readUserData(USER_PATH);
+		System.out.println(
+				"..........................................Original Data has been Gotten.............................................");
+
+		// ***********************************************************************************************************************
+		// get the train classification
+		System.out.println(
+				".................................Get the classification of train set..................................");
+
+		System.out.println(
+				"...............................Integrate the user and shop with trainInfo...............................");
+
+		System.out.println(
+				"...............................The following will take long time to get the optimal offset...............................");
+
+		// 计时
+		long startTime = System.currentTimeMillis();
+		// 训练数据分组
+		ArrayList<HashMap<String, TrainInfo>> trainSplited = cal.splitTrainData(trainData);
+		ArrayList<Double[]> totalAccuracy = new ArrayList<Double[]>();
+		
+		double[] accuracy = new double[10];
+
+		for (int i = 0; i < 10; i++) {
+			// 获取训练数据以及测试数据
+			HashMap<String, TrainInfo> trainInfoData = new HashMap<String, TrainInfo>();
+			HashMap<String, TrainInfo> testInfoDataOrig = new HashMap<String, TrainInfo>();
+			HashMap<String, TestInfo> testInfoData = new HashMap<String, TestInfo>();
+
+			for (int j = 0; j < 10; j++) {
+				if (j == i) {
+					testInfoDataOrig = trainSplited.get(i);
+					testInfoData = cal.convertTrain2Test(testInfoDataOrig);
+				} else {
+					HashMap<String, TrainInfo> tempTrain = trainSplited.get(j);
+					trainInfoData.putAll(tempTrain);
+				}
+			}
+			HashMap<String, User> userDataCopy = Utils.copyUserData(userData);
+			// 将训练数据以及用户轨迹整合到用户对象和店铺对象，获得其统计特征
+			cal.shopMatchTrain(shopData, trainInfoData);
+			cal.userMatchTrain(userDataCopy, trainInfoData);
+			cal.userMatchTrace(userDataCopy, traceData);
+			HashMap<String, LabelsCategory> classi = cal.getTrainClassi(trainInfoData, shopData);
+			// 获取训练集中的店铺
+			HashMap<Integer, Shop> trainShopData = cal.getTrainShop(trainInfoData, shopData);
+			// 获取训练集中的用户
+			HashMap<String, User> trainUsers = Utils.getTrainUser(trainInfoData, userDataCopy);
+			// *********************************************************************************************************************
+			// 训练并进行分类推荐
+			cal.userMatchShop(testInfoData, userDataCopy, trainShopData);
+			cal.getMatchedTrace(trainInfoData, testInfoData, shopData, difLongLat);
+			Utils.recommendSameUserPos(userDataCopy, testInfoData);
+//			cal.matchByID(trainInfoData, testInfoData, classi, shopData, difLongLat);
+			cal.matchByClassi(trainInfoData, testInfoData, classi, shopData, cateRatio, disRatio1);
+			Utils.recommendSameUserPos_1(userDataCopy, testInfoData, trainInfoData);
+			Utils.recommendSamePos(testInfoData, trainInfoData);
+			Utils.recommendOneShop(testInfoData, trainUsers);
+			Utils.recommendByPos(trainInfoData, testInfoData, shopData, userDataCopy, classi);
+			cal.matchNullTest(trainInfoData, testInfoData, classi, shopData, cateRatio, disRatio2, dis);
+			cal.matchNullRemain(shopData, testInfoData);
+			
+			// 计算推荐准确率
+			accuracy[i] = cal.getAccuracy(testInfoData, trainData);
+		}
+		
+		double mean = cal.getMean(accuracy);
+		System.out.println(mean);
+		
+		long endTime = System.currentTimeMillis();
+		String time = cal.timeConvert(endTime - startTime);
+
+//		ArrayList<String> ansArrayList = cal.getAnswerStr(testData);
+		System.out.println("Consume time = " + time);
+
+//		CSVTools.saveCSV(ansArrayList, USER_MATCH_TEST_ANS_PATH);
+		// ***********************************************************************************************************************
+		// Utils.genUserCandidateShop(shopData, testData);
+	}
+}

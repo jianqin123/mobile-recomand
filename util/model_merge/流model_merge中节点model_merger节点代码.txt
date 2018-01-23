@@ -1,0 +1,10 @@
+allData<-modelerData;
+model1_result<-allData[allData$model==1,]
+model1_result<-model1_result[,1:3];
+model2_result<-allData[allData$model==2,]
+model2_merger<-model2_result[model2_result[,4]>=0.5,]
+model_result<-rbind(model2_merger[,1:3],model1_result)
+model_result<-model_result[!duplicated(model_result[,1:2]),]
+#设置最终结果存放的路径
+setwd("?")
+write.csv(model_result,"model_result.csv",row.names=F)

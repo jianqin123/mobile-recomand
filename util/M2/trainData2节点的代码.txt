@@ -1,0 +1,22 @@
+setwd("D:/代码目录及运行说明/data")
+trainData<-read.csv("123_.csv");
+trainData<-trainData[,c(2:7,11,14,8,9,12,13,1,10)]
+#设置相应代码的路径
+source('D:/代码目录及运行说明/util/M2/流1/user_trace_sim.R')
+source('D:/代码目录及运行说明/util/M2/流1/supportModel.R')
+source('D:/代码目录及运行说明/util/M2/流1/splitData.R')
+source('D:/代码目录及运行说明/util/M2/流1/prePareTrain.R')
+source(D:/代码目录及运行说明/util/M2/流1/getDataInfo.R')
+source('D:/代码目录及运行说明/util/M2/流1/calDistance.R')
+source('D:/代码目录及运行说明/util/M2/流1/allTrain.R')
+library(miscTools)
+#设置中间结果存放的位置
+print(class(trainData));
+train<-allTrain(trainData);
+#将list装为数字
+for(a in 1:length(train[1,]))
+{
+ train[,a]<-unlist(train[,a])
+}
+print(train[1,])
+write.csv(train,"trainData12_.csv",row.names=F)
